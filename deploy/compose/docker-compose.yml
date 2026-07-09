@@ -1,0 +1,115 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse-server
+    ports:
+      - "8123:8123" # HTTP interface
+      - "9000:9000" # Native client port
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/config.xml:/etc/clickhouse-server/config.d/custom_config.xml:rw
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=qwerty
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - app-network
+
+  nats:
+    image: nats:alpine
+    ports:
+      - "4222:4222" # Основной порт для клиентов
+      - "8222:8222" # HTTP-порт для метрик и мониторинга (опционально)
+    networks:
+      - app-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "9091:9091"
+    networks:
+      - app-network
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+    ports:
+      - "9100:9100"
+    networks:
+      - app-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks:
+      - app-network
+
+  tracker-api:
+    build:
+      context: ../../
+      dockerfile: deploy/compose/ingestion/Dockerfile
+    hostname: "localhost"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - nats
+      - clickhouse
+    env_file:
+      - ../../ingestion/.env
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  tracker-batching:
+    build:
+      context: ../../
+      dockerfile: deploy/compose/batching/Dockerfile
+    depends_on:
+      - nats
+      - clickhouse
+      - tracker-api
+    env_file:
+      - ../../batching/.env
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  clickhouse_data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  app-network:
+    name: app-network
+    external: false
