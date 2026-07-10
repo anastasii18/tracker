@@ -69,9 +69,9 @@ func (app *App) Run(ctx context.Context) error {
 func (app *App) Stop() {
 	log.Println("Остановка сервиса Batching...")
 
-	if app.diContainer.nats != nil {
+	if app.diContainer.natsConn != nil {
 		// Drain() корректно завершает подписки и закрывает коннект
-		_ = app.diContainer.nats.Drain()
+		_ = app.diContainer.natsConn.Drain()
 	}
 
 	log.Println("Сервис Batching остановлен")

@@ -16,10 +16,10 @@ type Publisher interface {
 var _ Publisher = (*NcPublisher)(nil)
 
 type NcPublisher struct {
-	*nats.Conn
+	nats.JetStreamContext
 }
 
-func NewPublisher(nc *nats.Conn) *NcPublisher {
+func NewPublisher(nc nats.JetStreamContext) *NcPublisher {
 	return &NcPublisher{nc}
 }
 
@@ -32,7 +32,7 @@ func (ncp NcPublisher) Publish(ctx context.Context, event Event, userAgent, remo
 		return err
 	}
 
-	err = ncp.Conn.Publish("hh.events", payload)
+	_, err = ncp.PublishAsync("hh.events", payload)
 
 	if err != nil {
 		log.Println("Ошибка отправки в NATS:", err)

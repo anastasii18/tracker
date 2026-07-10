@@ -16,7 +16,8 @@ import (
 
 type diContainer struct {
 	Server           *http.Server
-	nats             *nats.Conn
+	natsConn         *nats.Conn
+	natsJSContext    nats.JetStreamContext
 	ingestionService service.IngestionService
 	publisher        service.Publisher
 }
@@ -50,9 +51,8 @@ func (d *diContainer) NewServer(ctx context.Context, config *Config) (*http.Serv
 	}
 	return d.Server, nil
 }
-
-func (d *diContainer) NewNats(config *Config) (*nats.Conn, error) {
-	if d.nats == nil {
+func (d *diContainer) NewNatsConn(config *Config) (*nats.Conn, error) {
+	if d.natsConn == nil {
 		opts := []nats.Option{
 			nats.RetryOnFailedConnect(true),
 			nats.MaxReconnects(5),
@@ -62,11 +62,28 @@ func (d *diContainer) NewNats(config *Config) (*nats.Conn, error) {
 		if err != nil {
 			return nil, err
 		}
-
-		d.nats = nc
+		d.natsConn = nc
 	}
 
-	return d.nats, nil
+	return d.natsConn, nil
+}
+
+func (d *diContainer) NewNatsJSContext(config *Config) (nats.JetStreamContext, error) {
+	if d.natsJSContext == nil {
+		nc, err := d.NewNatsConn(config)
+		if err != nil {
+			return nil, err
+		}
+
+		js, err := nc.JetStream(nats.PublishAsyncMaxPending(256))
+		if err != nil {
+			return nil, err
+		}
+
+		d.natsJSContext = js
+	}
+
+	return d.natsJSContext, nil
 }
 
 func (d *diContainer) NewIngestionService(config *Config) (service.IngestionService, error) {
@@ -83,11 +100,11 @@ func (d *diContainer) NewIngestionService(config *Config) (service.IngestionServ
 
 func (d *diContainer) NewPublisher(config *Config) (service.Publisher, error) {
 	if d.publisher == nil {
-		nc, err := d.NewNats(config)
+		js, err := d.NewNatsJSContext(config)
 		if err != nil {
 			return nil, err
 		}
-		d.publisher = service.NewPublisher(nc)
+		d.publisher = service.NewPublisher(js)
 	}
 	return d.publisher, nil
 }
