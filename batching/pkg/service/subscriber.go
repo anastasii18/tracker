@@ -38,12 +38,13 @@ func (ncs NcSubscriber) CreateStream(streamName, streamSubject string) error {
 		if err != nil {
 			return err
 		}
-	} else {
-		log.Printf("Updating stream: %s\n", streamName)
-		_, err = ncs.NatsJSContext.UpdateStream(cfg)
-		if err != nil {
-			return err
-		}
+		return nil
+	}
+
+	log.Printf("Updating stream: %s\n", streamName)
+	_, err = ncs.NatsJSContext.UpdateStream(cfg)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -127,29 +128,37 @@ func (ncs *NcSubscriber) runBatcher(ctx context.Context, sub *nats.Subscription,
 			err = ncs.flushToClickHouse(ctx, batch)
 			if err != nil {
 				log.Printf("Ошибка записи в CH, делаем Nak: %v", err)
-				// Возвращаем все сообщения в очередь с задержкой (Backoff)
-				for _, msg := range messageRefs {
-					err := msg.NakWithDelay(5 * time.Second)
-					if err != nil {
-						log.Println(fmt.Errorf("error run batcher (nak): %w", err))
-						return
-					}
-				}
+				ncs.nakWithDelay(messageRefs)
 				continue
 			}
 
 			// Если всё успешно — подтверждаем весь батч
-			for _, msg := range messageRefs {
-				err := msg.Ack()
-				if err != nil {
-					log.Println(fmt.Errorf("error run batcher (Ack): %w", err))
-					return
-				}
-			}
+			ncs.ackMessages(messageRefs)
 
 			// Обнуляем после отправки
 			batch = batch[:0]
 			messageRefs = messageRefs[:0]
+		}
+	}
+}
+
+func (ncs *NcSubscriber) nakWithDelay(messageRefs []*nats.Msg) {
+	// Возвращаем все сообщения в очередь с задержкой (Backoff)
+	for _, msg := range messageRefs {
+		err := msg.NakWithDelay(5 * time.Second)
+		if err != nil {
+			log.Println(fmt.Errorf("error run batcher (nak): %w", err))
+			return
+		}
+	}
+}
+
+func (ncs *NcSubscriber) ackMessages(messageRefs []*nats.Msg) {
+	for _, msg := range messageRefs {
+		err := msg.Ack()
+		if err != nil {
+			log.Println(fmt.Errorf("error run batcher (Ack): %w", err))
+			return
 		}
 	}
 }
