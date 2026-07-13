@@ -25,6 +25,9 @@ services:
     ports:
       - "4222:4222" # Основной порт для клиентов
       - "8222:8222" # HTTP-порт для метрик и мониторинга (опционально)
+    volumes:
+      - nats_data:/data
+    command: "-js -sd /data"
     networks:
       - app-network
 
@@ -108,6 +111,7 @@ volumes:
   clickhouse_data:
   prometheus-data:
   grafana-data:
+  nats_data:
 
 networks:
   app-network:

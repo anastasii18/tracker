@@ -10,17 +10,18 @@ import (
 )
 
 type diContainer struct {
-	nats       *nats.Conn
-	subscriber service.Subscriber
-	db         *db.DB
+	natsConn      *nats.Conn
+	natsJSContext nats.JetStreamContext
+	subscriber    service.Subscriber
+	db            *db.DB
 }
 
 func NewDiContainer() *diContainer {
 	return &diContainer{}
 }
 
-func (d *diContainer) NewNats(ctx context.Context, config *Config) (*nats.Conn, error) {
-	if d.nats == nil {
+func (d *diContainer) NewNatsConn(ctx context.Context, config *Config) (*nats.Conn, error) {
+	if d.natsConn == nil {
 		opts := []nats.Option{
 			nats.RetryOnFailedConnect(true),
 			nats.MaxReconnects(5),
@@ -30,16 +31,34 @@ func (d *diContainer) NewNats(ctx context.Context, config *Config) (*nats.Conn, 
 		if err != nil {
 			return nil, err
 		}
-
-		d.nats = nc
+		d.natsConn = nc
 	}
 
-	return d.nats, nil
+	return d.natsConn, nil
+}
+
+func (d *diContainer) NewNatsJSContext(ctx context.Context, config *Config) (nats.JetStreamContext, error) {
+	if d.natsJSContext == nil {
+		nc, err := d.NewNatsConn(ctx, config)
+		if err != nil {
+			return nil, err
+		}
+
+		// лимит невыполненных асинхронных операций
+		js, err := nc.JetStream(nats.PublishAsyncMaxPending(256))
+		if err != nil {
+			return nil, err
+		}
+
+		d.natsJSContext = js
+	}
+
+	return d.natsJSContext, nil
 }
 
 func (d *diContainer) NewSubscriber(ctx context.Context, config *Config) (service.Subscriber, error) {
 	if d.subscriber == nil {
-		nc, err := d.NewNats(ctx, config)
+		nc, err := d.NewNatsJSContext(ctx, config)
 		if err != nil {
 			return nil, err
 		}
