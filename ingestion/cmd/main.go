@@ -54,9 +54,11 @@ func initConfig() (*app.Config, error) {
 	var config app.Config
 
 	secretsMapping := map[string]*string{
-		"HTTP_PORT": &config.HttpPort,
-		"HTTP_HOST": &config.HttpHost,
-		"NATS_URL":  &config.NatsUrl,
+		"HTTP_PORT":  &config.HttpPort,
+		"HTTP_HOST":  &config.HttpHost,
+		"NATS_URL":   &config.NatsUrl,
+		"APP_SECRET": &config.AppSecret,
+		"GEOIP_PATH": &config.GeoipPath,
 	}
 	for key, target := range secretsMapping {
 		*target = os.Getenv(key)

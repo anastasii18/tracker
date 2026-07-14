@@ -17,6 +17,8 @@ type Config struct {
 	ReadHeaderTimeout time.Duration
 	ShutdownTimeout   time.Duration
 	NatsUrl           string
+	AppSecret         string
+	GeoipPath         string
 }
 
 type App struct {
@@ -84,6 +86,13 @@ func (app *App) Run(ctx context.Context) error {
 func (app *App) Stop() {
 	ctx, cancel := context.WithTimeout(context.Background(), app.Config.ShutdownTimeout)
 	defer cancel()
+
+	if app.diContainer.geoipDB != nil {
+		err := app.diContainer.geoipDB.Close()
+		if err != nil {
+			log.Println(err)
+		}
+	}
 
 	err := app.diContainer.Server.Shutdown(ctx)
 	if err != nil {

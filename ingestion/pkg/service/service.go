@@ -5,7 +5,7 @@ import (
 )
 
 type IngestionService interface {
-	BatchEvent(context context.Context, event Event, userAgent, remoteAddr string) error
+	BatchEvent(context context.Context, event Event, userAgent, remoteAddr, appSecret string) error
 }
 
 var _ IngestionService = (*Service)(nil)
@@ -18,8 +18,8 @@ func NewService(publisher Publisher) *Service {
 	return &Service{Publisher: publisher}
 }
 
-func (s Service) BatchEvent(ctx context.Context, event Event, userAgent, remoteAddr string) error {
-	err := s.Publisher.Publish(ctx, event, userAgent, remoteAddr)
+func (s Service) BatchEvent(ctx context.Context, event Event, userAgent, remoteAddr, appSecret string) error {
+	err := s.Publisher.Publish(ctx, event, userAgent, remoteAddr, appSecret)
 	if err != nil {
 		return err
 	}

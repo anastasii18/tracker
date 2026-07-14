@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 	"github.com/nats-io/nats.go"
+	"github.com/oschwald/geoip2-golang"
 )
 
 type diContainer struct {
@@ -20,6 +21,7 @@ type diContainer struct {
 	natsJSContext    nats.JetStreamContext
 	ingestionService service.IngestionService
 	publisher        service.Publisher
+	geoipDB          *geoip2.Reader
 }
 
 func NewDiContainer() *diContainer {
@@ -41,7 +43,7 @@ func (d *diContainer) NewServer(ctx context.Context, config *Config) (*http.Serv
 	a := api.NewApi(ingestionService)
 
 	r.Route("/", func(r chi.Router) {
-		r.Post("/track", a.ReceiveEventHandler())
+		r.Post("/track", a.ReceiveEventHandler(config.AppSecret))
 	})
 
 	d.Server = &http.Server{
@@ -104,7 +106,23 @@ func (d *diContainer) NewPublisher(config *Config) (service.Publisher, error) {
 		if err != nil {
 			return nil, err
 		}
-		d.publisher = service.NewPublisher(d.natsJSContext)
+		err = d.NewGeoipDB(config)
+		if err != nil {
+			return nil, err
+		}
+		d.publisher = service.NewPublisher(d.natsJSContext, d.geoipDB)
 	}
 	return d.publisher, nil
+}
+
+func (d *diContainer) NewGeoipDB(config *Config) error {
+	if d.geoipDB == nil {
+		db, err := geoip2.Open(config.GeoipPath)
+		if err != nil {
+			return err
+		}
+		d.geoipDB = db
+	}
+
+	return nil
 }
