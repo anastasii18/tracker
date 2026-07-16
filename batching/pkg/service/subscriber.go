@@ -129,11 +129,10 @@ func (ncs *NcSubscriber) runBatcher(ctx context.Context, sub *nats.Subscription,
 			if err != nil {
 				log.Printf("Ошибка записи в CH, делаем Nak: %v", err)
 				ncs.nakWithDelay(messageRefs)
-				continue
+			} else {
+				// Если всё успешно — подтверждаем весь батч
+				ncs.ackMessages(messageRefs)
 			}
-
-			// Если всё успешно — подтверждаем весь батч
-			ncs.ackMessages(messageRefs)
 
 			// Обнуляем после отправки
 			batch = batch[:0]

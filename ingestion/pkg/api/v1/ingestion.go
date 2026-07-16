@@ -3,7 +3,9 @@ package v1
 import (
 	"encoding/json"
 	"ingestion/pkg/service"
+	"net"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/render"
 )
@@ -17,7 +19,7 @@ func NewApi(service service.IngestionService) *Api {
 	return &Api{ingestionService: service}
 }
 
-func (a *Api) ReceiveEventHandler() http.HandlerFunc {
+func (a *Api) ReceiveEventHandler(appSecret string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		var event service.Event
@@ -28,7 +30,7 @@ func (a *Api) ReceiveEventHandler() http.HandlerFunc {
 		}
 
 		userAgent := r.Header.Get("User-Agent")
-		err = a.ingestionService.BatchEvent(ctx, event, userAgent, r.RemoteAddr)
+		err = a.ingestionService.BatchEvent(ctx, event, userAgent, GetRealIP(r), appSecret)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -36,4 +38,28 @@ func (a *Api) ReceiveEventHandler() http.HandlerFunc {
 
 		render.Status(r, http.StatusAccepted)
 	}
+}
+
+func GetRealIP(r *http.Request) string {
+	// ищем стандартный заголовок от прокси-серверов
+	forwarded := r.Header.Get("X-Forwarded-For")
+	if forwarded != "" {
+		// X-Forwarded-For может содержать цепочку IP через запятую.
+		// Нас интересует самый первый (оригинальный клиент)
+		ips := strings.Split(forwarded, ",")
+		return strings.TrimSpace(ips[0])
+	}
+
+	// Ищем специфичный заголовок Nginx (если настроен)
+	realIP := r.Header.Get("X-Real-IP")
+	if realIP != "" {
+		return strings.TrimSpace(realIP)
+	}
+
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+
+	return ip
 }

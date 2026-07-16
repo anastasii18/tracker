@@ -8,6 +8,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/cespare/xxhash/v2"
 )
 
 type DB struct {
@@ -55,8 +56,11 @@ func (db *DB) InitEvents(ctx context.Context) error {
 			target_id String,
 			meta_data String,
 			client_time DateTime,
-			user_agent String,
-			ip String
+			os LowCardinality(String),
+		    browser LowCardinality(String),
+		    device LowCardinality(String),
+		    visitor_id  UInt64,  
+		    country_iso_code LowCardinality(String),
 		) Engine = MergeTree()
 		ORDER BY (event_type, client_time)
 	`)
@@ -90,8 +94,12 @@ func (db *DB) SendBatch(ctx context.Context, batchData [][]byte) error {
 			event.TargetID,
 			string(event.MetaData),
 			event.ClientTime,
-			event.UserAgent,
-			event.IP)
+			event.OS,
+			event.Browser,
+			event.Device,
+			xxhash.Sum64String(event.VisitorID),
+			event.CountryIsoCode,
+		)
 
 		if err != nil {
 			return err

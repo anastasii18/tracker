@@ -6,14 +6,17 @@ import (
 )
 
 type Event struct {
-	EventType  EventType
-	UserID     string
-	SessionID  string
-	TargetID   string
-	MetaData   json.RawMessage
-	ClientTime time.Time
-	UserAgent  string
-	IP         string
+	EventType      EventType
+	UserID         string
+	SessionID      string
+	TargetID       string
+	MetaData       json.RawMessage
+	ClientTime     time.Time
+	VisitorID      string
+	OS             string
+	Browser        string
+	Device         string
+	CountryIsoCode string
 }
 
 type EventType int32
