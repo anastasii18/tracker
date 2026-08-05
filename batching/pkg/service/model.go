@@ -6,6 +6,7 @@ import (
 )
 
 type Event struct {
+	EventId        string
 	EventType      EventType
 	UserID         string
 	SessionID      string

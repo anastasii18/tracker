@@ -44,12 +44,23 @@ func NewDB(ctx context.Context, config *Config) (*DB, error) {
 		return nil, err
 	}
 
+	err = database.InitSummingEvents(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	err = database.InitSummingEventsMV(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	return database, nil
 }
 
 func (db *DB) InitEvents(ctx context.Context) error {
 	err := db.Conn.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS events (
+		    event_id String,
 			event_type Int32,
 			user_id String,
 			session_id String,
@@ -62,14 +73,51 @@ func (db *DB) InitEvents(ctx context.Context) error {
 		    visitor_id  UInt64,  
 		    country_iso_code LowCardinality(String),
 		) Engine = MergeTree()
+		PARTITION BY toYYYYMM(client_time)
 		ORDER BY (event_type, client_time)
+		TTL client_time + INTERVAL 90 DAY
+		SETTINGS non_replicated_deduplication_window = 1000;
 	`)
 
 	return err
 }
 
+func (db *DB) InitSummingEvents(ctx context.Context) error {
+	err := db.Conn.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS type_events_sum (
+			event_type Int32,
+			target_id String,
+			date Date,
+			clicks UInt64,
+		) Engine = SummingMergeTree()
+		ORDER BY (event_type, target_id, date)
+		SETTINGS non_replicated_deduplication_window = 1000
+	`)
+
+	return err
+}
+
+func (db *DB) InitSummingEventsMV(ctx context.Context) error {
+	err := db.Conn.Exec(ctx, `
+		CREATE MATERIALIZED VIEW IF NOT EXISTS type_events_sum_mv
+		TO type_events_sum
+		AS
+		SELECT
+			event_type,
+			target_id,
+			toDate(client_time) AS date,
+			count() AS clicks
+		FROM events
+		GROUP BY event_type, target_id, toDate(client_time);
+    `)
+
+	return err
+}
+
 func (db *DB) SendBatch(ctx context.Context, batchData [][]byte) error {
-	batch, err := db.Conn.PrepareBatch(ctx, "INSERT INTO events")
+	batch, err := db.Conn.PrepareBatch(ctx, "INSERT INTO events SETTINGS "+
+		"insert_deduplicate = 1,\n    "+
+		"deduplicate_blocks_in_dependent_materialized_views = 1")
 	if err != nil {
 		return err
 	}
@@ -78,6 +126,8 @@ func (db *DB) SendBatch(ctx context.Context, batchData [][]byte) error {
 	defer func() {
 		_ = batch.Abort()
 	}()
+
+	appendedCount := 0
 
 	for i := 0; i < len(batchData); i++ {
 		var event Event
@@ -88,6 +138,7 @@ func (db *DB) SendBatch(ctx context.Context, batchData [][]byte) error {
 		}
 
 		err = batch.Append(
+			event.EventId,
 			event.EventType,
 			event.UserID,
 			event.SessionID,
@@ -104,6 +155,11 @@ func (db *DB) SendBatch(ctx context.Context, batchData [][]byte) error {
 		if err != nil {
 			return err
 		}
+		appendedCount++
+	}
+
+	if appendedCount == 0 {
+		return nil
 	}
 
 	return batch.Send()
