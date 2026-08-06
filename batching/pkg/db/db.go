@@ -54,6 +54,16 @@ func NewDB(ctx context.Context, config *Config) (*DB, error) {
 		return nil, err
 	}
 
+	err = database.InitAggregateEvents(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	err = database.InitAggregateEventsMV(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	return database, nil
 }
 
@@ -109,6 +119,37 @@ func (db *DB) InitSummingEventsMV(ctx context.Context) error {
 			count() AS clicks
 		FROM events
 		GROUP BY event_type, target_id, toDate(client_time);
+    `)
+
+	return err
+}
+
+func (db *DB) InitAggregateEvents(ctx context.Context) error {
+	err := db.Conn.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS events_visitor (
+		    date Date,
+		    visits AggregateFunction(count, UInt64),
+		    users AggregateFunction(uniqCombined, UInt64),
+		)
+		ENGINE = AggregatingMergeTree() 
+		ORDER BY date
+		SETTINGS non_replicated_deduplication_window = 1000;
+	`)
+
+	return err
+}
+
+func (db *DB) InitAggregateEventsMV(ctx context.Context) error {
+	err := db.Conn.Exec(ctx, `
+		CREATE MATERIALIZED VIEW IF NOT EXISTS events_visitor_mv
+		TO events_visitor
+		AS
+		SELECT
+		toDate(client_time) AS date,
+		uniqCombinedState(visitor_id) AS users,                                                                                                                        
+		countState() AS visits   
+		FROM events
+		GROUP BY toDate(client_time);
     `)
 
 	return err
