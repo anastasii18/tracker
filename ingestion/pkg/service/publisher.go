@@ -10,6 +10,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mileusna/useragent"
 	"github.com/nats-io/nats.go"
 	"github.com/oschwald/geoip2-golang"
@@ -36,6 +37,7 @@ func (ncp NcPublisher) Publish(ctx context.Context, event Event, userAgent, remo
 	ua := useragent.Parse(userAgent)
 	batchingEvent.Browser = ua.Name
 	batchingEvent.OS = ua.OS
+	batchingEvent.EventId = uuid.NewString()
 	batchingEvent.Device = getDevice(ua)
 	batchingEvent.VisitorID = generateVisitorID(remoteAddr, userAgent, appSecret)
 	batchingEvent.CountryIsoCode = ncp.getCountryIsoCode(remoteAddr)
