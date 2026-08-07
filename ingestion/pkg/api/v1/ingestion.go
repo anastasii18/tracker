@@ -2,12 +2,11 @@ package v1
 
 import (
 	"encoding/json"
+	"errors"
 	"ingestion/pkg/service"
 	"net"
 	"net/http"
 	"strings"
-
-	"github.com/go-chi/render"
 )
 
 type Api struct {
@@ -32,11 +31,26 @@ func (a *Api) ReceiveEventHandler(appSecret string) http.HandlerFunc {
 		userAgent := r.Header.Get("User-Agent")
 		err = a.ingestionService.BatchEvent(ctx, event, userAgent, GetRealIP(r), appSecret)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			var valErr *service.ValidationError
+			var infraErr *service.InfrastructureError
+
+			switch {
+			case errors.As(err, &valErr):
+				// Ошибка валидации данных (бизнес-правила)
+				http.Error(w, "validation failed", http.StatusBadRequest)
+
+			case errors.As(err, &infraErr):
+				// Ошибка инфраструктуры (БД, брокер сообщений упал)
+				http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+
+			default:
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+			}
+
 			return
 		}
 
-		render.Status(r, http.StatusAccepted)
+		w.WriteHeader(http.StatusAccepted)
 	}
 }
 

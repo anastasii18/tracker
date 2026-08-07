@@ -6,18 +6,18 @@ import (
 )
 
 type Event struct {
-	EventId        string
-	EventType      EventType
-	UserID         string
-	SessionID      string
-	TargetID       string
-	MetaData       json.RawMessage
-	ClientTime     time.Time
-	VisitorID      string
-	OS             string
-	Browser        string
-	Device         string
-	CountryIsoCode string
+	EventId        string          `json:"event_id"`
+	EventType      EventType       `json:"event_type"`
+	UserID         string          `json:"user_id"`
+	SessionID      string          `json:"session_id"`
+	TargetID       string          `json:"target_id"`
+	MetaData       json.RawMessage `json:"metadata"`
+	ClientTime     time.Time       `json:"client_time"`
+	VisitorID      string          `json:"visitor_id"`
+	OS             string          `json:"os"`
+	Browser        string          `json:"browser"`
+	Device         string          `json:"device"`
+	CountryIsoCode string          `json:"country_iso_code"`
 }
 
 type EventType int32

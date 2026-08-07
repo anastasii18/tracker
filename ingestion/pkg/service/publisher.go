@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log"
 	"net"
 	"time"
@@ -18,6 +18,7 @@ import (
 
 type Publisher interface {
 	Publish(context context.Context, event Event, userAgent, remoteAddr, appSecret string) error
+	Drain() error
 }
 
 var _ Publisher = (*NcPublisher)(nil)
@@ -45,26 +46,33 @@ func (ncp NcPublisher) Publish(ctx context.Context, event Event, userAgent, remo
 	payload, err := json.Marshal(batchingEvent)
 
 	if err != nil {
-		log.Println(fmt.Errorf("ошибка расшифровки event: %w", err))
-		return err
+		log.Println("Критическая ошибка сериализации:", err)
+		return &InfrastructureError{Operation: "json.Marshal", Err: err}
 	}
-
 	_, err = ncp.jsContext.PublishAsync("hh.events", payload)
 
 	if err != nil {
 		log.Println("Ошибка отправки в NATS:", err)
-		return err
+		return &InfrastructureError{Operation: "Ошибка отправки в NATS: ", Err: err}
 	}
 
 	return nil
 }
 
 func (ncp NcPublisher) getCountryIsoCode(remoteAddr string) string {
-	ip := net.ParseIP(remoteAddr)
+	if ncp.geoipDB == nil {
+		return ""
+	}
 
-	record, err := ncp.geoipDB.City(ip)
+	ip := net.ParseIP(remoteAddr)
+	if ip == nil {
+		return ""
+	}
+
+	record, err := ncp.geoipDB.Country(ip)
 	if err != nil {
-		log.Fatalf("Lookup failed: %v", err)
+		log.Printf("getCountryIsoCode failed: %v", err)
+		return ""
 	}
 
 	return record.Country.IsoCode
@@ -91,4 +99,15 @@ func generateVisitorID(ip, userAgent, appSecret string) string {
 	h := sha256.Sum256([]byte(rawData))
 
 	return hex.EncodeToString(h[:])
+}
+
+// Drain дожидается всех in-flight публикаций
+func (ncp NcPublisher) Drain() error {
+	done := ncp.jsContext.PublishAsyncComplete()
+	select {
+	case <-done:
+		return nil
+	case <-time.After(10 * time.Second):
+		return errors.New("timeout while draining pending publishes")
+	}
 }

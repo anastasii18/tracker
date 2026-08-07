@@ -4,6 +4,7 @@ import (
 	"context"
 	api "ingestion/pkg/api/v1"
 	"ingestion/pkg/service"
+	"log"
 	"net"
 	"net/http"
 	"time"
@@ -77,7 +78,12 @@ func (d *diContainer) InitNatsJSContext(config *Config) error {
 			return err
 		}
 
-		js, err := d.natsConn.JetStream(nats.PublishAsyncMaxPending(256))
+		js, err := d.natsConn.JetStream(
+			nats.PublishAsyncMaxPending(256),
+			nats.PublishAsyncErrHandler(func(js nats.JetStream, msg *nats.Msg, err error) {
+				log.Printf("CRITICAL: Асинхронная ошибка публикации в NATS. Сообщение утеряно. Ошибка: %v", err)
+			}),
+		)
 		if err != nil {
 			return err
 		}

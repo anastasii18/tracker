@@ -87,6 +87,10 @@ func (app *App) Stop() {
 	ctx, cancel := context.WithTimeout(context.Background(), app.Config.ShutdownTimeout)
 	defer cancel()
 
+	if err := app.diContainer.publisher.Drain(); err != nil {
+		log.Println(err)
+	}
+
 	if app.diContainer.geoipDB != nil {
 		err := app.diContainer.geoipDB.Close()
 		if err != nil {
@@ -100,4 +104,21 @@ func (app *App) Stop() {
 	}
 
 	log.Println("Сервер остановлен")
+}
+
+func (c *Config) Validate() error {
+	if c.HttpPort == "" {
+		return errors.New("HTTP_PORT is required")
+	}
+	if c.NatsUrl == "" {
+		return errors.New("NATS_URL is required")
+	}
+	if c.AppSecret == "" {
+		return errors.New("APP_SECRET is required")
+	}
+	if c.GeoipPath == "" {
+		return errors.New("GEOIP_PATH is required")
+	}
+
+	return nil
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"ingestion/pkg/app"
 	"log"
 	"os"
@@ -34,18 +35,22 @@ func main() {
 		return
 	}
 
-	err = a.Run(ctx)
-	if err != nil {
-		log.Println("Ошибка при работе приложения")
-		return
-	}
-
-	// Graceful shutdown
+	// Graceful shutdown: ждём сигнал или завершение Run() без блокировки
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
-	log.Println("Завершение работы сервера...")
+	errCh := make(chan error, 1)
+	go func() { errCh <- a.Run(ctx) }()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			log.Println("Ошибка при работе приложения")
+			return
+		}
+	case <-quit:
+		log.Println("Завершение работы сервера...")
+	}
 
 	a.Stop()
 }
@@ -62,6 +67,10 @@ func initConfig() (*app.Config, error) {
 	}
 	for key, target := range secretsMapping {
 		*target = os.Getenv(key)
+	}
+
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
 	return &config, nil

@@ -80,7 +80,7 @@ func (ncs *NcSubscriber) runBatcher(ctx context.Context, sub *nats.Subscription,
 		select {
 		case <-ctx.Done():
 			if len(batch) > 0 {
-				err := ncs.flushToClickHouse(ctx, batch) // Спасаем остатки
+				err := ncs.flushToClickHouse(context.WithoutCancel(ctx), batch) // Спасаем остатки
 				if err != nil {
 					log.Println(fmt.Errorf("error run batcher (flush): %w", err))
 					return
