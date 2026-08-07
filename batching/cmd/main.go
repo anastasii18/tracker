@@ -3,6 +3,7 @@ package main
 import (
 	"batching/pkg/app"
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -26,18 +27,22 @@ func main() {
 		return
 	}
 
-	err = a.Run(ctx)
-	if err != nil {
-		log.Println("Ошибка при работе приложения")
-		return
-	}
-
-	// Graceful shutdown
+	// Graceful shutdown: ждём сигнал или завершение Run() без блокировки
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
-	log.Println("Завершение работы сервера...")
+	errCh := make(chan error, 1)
+	go func() { errCh <- a.Run(ctx) }()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			log.Println("Ошибка при работе приложения")
+			return
+		}
+	case <-quit:
+		log.Println("Завершение работы сервера...")
+	}
 
 	a.Stop()
 }
@@ -45,7 +50,6 @@ func main() {
 func initConfig() (*app.Config, error) {
 	var config app.Config
 	var batchSize string
-	var err error
 
 	secretsMapping := map[string]*string{
 		"NATS_URL":             &config.NatsUrl,
@@ -59,9 +63,18 @@ func initConfig() (*app.Config, error) {
 		*target = os.Getenv(key)
 	}
 
-	config.BatchSize, err = strconv.Atoi(batchSize)
-	if err != nil {
-		return nil, err
+	if batchSize == "" {
+		config.BatchSize = 1000
+	} else {
+		parsed, err := strconv.Atoi(batchSize)
+		if err != nil {
+			return nil, fmt.Errorf("invalid BATCH_SIZE environment variable (must be integer): %w", err)
+		}
+		config.BatchSize = parsed
+	}
+
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("batching config validation failed: %w", err)
 	}
 
 	return &config, nil

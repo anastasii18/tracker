@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log"
 
 	"go.uber.org/zap"
@@ -75,4 +76,25 @@ func (app *App) Stop() {
 	}
 
 	log.Println("Сервис Batching остановлен")
+}
+
+func (c *Config) Validate() error {
+	if c.NatsUrl == "" {
+		return errors.New("NATS_URL is required")
+	}
+	if c.CLickHouseUrl == "" {
+		return errors.New("CLICKHOUSE_URL is required")
+	}
+	if c.CLickHouseDatabase == "" {
+		return errors.New("CLICKHOUSE_DB is required")
+	}
+	if c.CLickHouseUserName == "" {
+		return errors.New("CLICKHOUSE_USER_NAME is required")
+	}
+
+	if c.BatchSize <= 0 {
+		return errors.New("BATCH_SIZE must be greater than 0")
+	}
+
+	return nil
 }
